@@ -6,7 +6,8 @@ const {
   updateUser,
   deleteUser,
   getSystemStats,
-  unlockUserAccount
+  unlockUserAccount,
+  suspendUserAccount
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -20,6 +21,7 @@ router.get('/users/:id', getUserById);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
 router.post('/users/:id/unlock', unlockUserAccount);
+router.post('/users/:id/suspend', suspendUserAccount);
 
 // System statistics
 router.get('/stats', getSystemStats);

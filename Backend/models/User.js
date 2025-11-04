@@ -102,6 +102,22 @@ const userSchema = new mongoose.Schema({
   },
   accountLockedUntil: {
     type: Date
+  },
+  // Account suspension
+  accountStatus: {
+    type: String,
+    enum: ['active', 'suspended', 'locked'],
+    default: 'active'
+  },
+  suspensionReason: {
+    type: String
+  },
+  suspendedAt: {
+    type: Date
+  },
+  suspendedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }
 }, {
   timestamps: true

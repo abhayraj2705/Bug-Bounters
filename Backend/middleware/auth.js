@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
 const { verifyToken } = require('../utils/jwt');
+const { getClientIp } = require('../utils/ipHelper');
 
 /**
  * Protect routes - Verify JWT token
@@ -101,7 +102,7 @@ exports.authorize = (...roles) => {
         action: 'ACCESS_DENIED',
         resourceType: 'System',
         timestamp: new Date(),
-        ipAddress: req.ip || req.connection.remoteAddress,
+        ipAddress: getClientIp(req),
         userAgent: req.headers['user-agent'],
         status: 'DENIED',
         details: {
@@ -158,7 +159,7 @@ exports.checkAttribute = (attributeChecks) => {
               action: 'ACCESS_DENIED',
               resourceType: 'System',
               timestamp: new Date(),
-              ipAddress: req.ip || req.connection.remoteAddress,
+              ipAddress: getClientIp(req),
               userAgent: req.headers['user-agent'],
               status: 'DENIED',
               details: {
@@ -181,7 +182,7 @@ exports.checkAttribute = (attributeChecks) => {
             action: 'ACCESS_DENIED',
             resourceType: 'System',
             timestamp: new Date(),
-            ipAddress: req.ip || req.connection.remoteAddress,
+            ipAddress: getClientIp(req),
             userAgent: req.headers['user-agent'],
             status: 'DENIED',
             details: {
@@ -213,6 +214,17 @@ exports.checkAttribute = (attributeChecks) => {
  * Check if user has access to specific patient
  * For doctors/nurses assigned to specific patients
  */
+/**
+ * Check if user has access to a specific patient
+ * 
+ * Access Rules:
+ * - Admin: Access to ALL patients across all hospitals
+ * - Nurse: Access to ALL patients in their OWN hospital (for care activities)
+ * - Doctor/Staff: Access only to ASSIGNED patients in their hospital
+ * 
+ * Hospital-based isolation: Users cannot access patients from other hospitals
+ * unless they use Break Glass emergency access
+ */
 exports.checkPatientAccess = async (req, res, next) => {
   try {
     if (!req.user) {
@@ -222,10 +234,14 @@ exports.checkPatientAccess = async (req, res, next) => {
       });
     }
 
-    const { patientId } = req.params;
+    const patientId = req.params.id || req.params.patientId;
+
+    console.log('[checkPatientAccess] Checking access for patient:', patientId);
+    console.log('[checkPatientAccess] User:', req.user.email, 'Role:', req.user.role);
 
     // Admin has access to all patients
     if (req.user.role === 'admin') {
+      console.log('[checkPatientAccess] Admin access granted');
       return next();
     }
 
@@ -239,9 +255,90 @@ exports.checkPatientAccess = async (req, res, next) => {
       });
     }
 
+    console.log('[checkPatientAccess] User has', user.assignedPatients.length, 'assigned patients');
+    console.log('[checkPatientAccess] Assigned patient IDs:', user.assignedPatients.map(id => id.toString()));
+
+    // For nurses, check if patient is in the same hospital
+    // Nurses can access any patient in their hospital for care activities
+    if (req.user.role === 'nurse') {
+      const Patient = require('../models/Patient');
+      
+      // Check if patientId is a MongoDB ObjectId or a patientId (P-xxx format)
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(patientId);
+      let patient;
+      
+      if (isValidObjectId) {
+        patient = await Patient.findById(patientId);
+      } else {
+        patient = await Patient.findOne({ patientId: patientId });
+      }
+      
+      if (!patient) {
+        return res.status(404).json({
+          success: false,
+          message: 'Patient not found'
+        });
+      }
+
+      // Check if patient is in the same hospital as the nurse
+      const sameHospital = patient.hospitalId === user.attributes?.hospitalId;
+      console.log('[checkPatientAccess] Nurse accessing patient. Same hospital:', sameHospital);
+      
+      if (sameHospital) {
+        console.log('[checkPatientAccess] Nurse access granted (same hospital)');
+        return next();
+      } else {
+        await AuditLog.createLog({
+          user: user._id,
+          userEmail: user.email,
+          userRole: user.role,
+          action: 'ACCESS_DENIED',
+          resourceType: 'Patient',
+          resourceId: patient._id,
+          patientId: patient.patientId,
+          timestamp: new Date(),
+          ipAddress: getClientIp(req),
+          userAgent: req.headers['user-agent'],
+          status: 'DENIED',
+          details: {
+            denialReason: 'Patient not in nurse\'s hospital',
+            nurseHospital: user.attributes?.hospitalId,
+            patientHospital: patient.hospitalId,
+            requestedPath: req.originalUrl
+          }
+        });
+
+        return res.status(403).json({
+          success: false,
+          message: 'You do not have access to patients from other hospitals'
+        });
+      }
+    }
+
+    // For doctors and staff, check assigned patients
+    // Need to get the patient to compare MongoDB _id
+    const Patient = require('../models/Patient');
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(patientId);
+    let patient;
+    
+    if (isValidObjectId) {
+      patient = await Patient.findById(patientId);
+    } else {
+      patient = await Patient.findOne({ patientId: patientId });
+    }
+    
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+    
     const hasAccess = user.assignedPatients.some(
-      (assignedPatientId) => assignedPatientId.toString() === patientId
+      (assignedPatientId) => assignedPatientId.toString() === patient._id.toString()
     );
+
+    console.log('[checkPatientAccess] Has access:', hasAccess);
 
     if (!hasAccess) {
       await AuditLog.createLog({
@@ -250,9 +347,10 @@ exports.checkPatientAccess = async (req, res, next) => {
         userRole: user.role,
         action: 'ACCESS_DENIED',
         resourceType: 'Patient',
-        resourceId: patientId,
+        resourceId: patient._id,
+        patientId: patient.patientId,
         timestamp: new Date(),
-        ipAddress: req.ip || req.connection.remoteAddress,
+        ipAddress: getClientIp(req),
         userAgent: req.headers['user-agent'],
         status: 'DENIED',
         details: {
@@ -307,7 +405,7 @@ exports.checkPatientConsent = (consentType) => {
           resourceId: patientId,
           patient: patientId,
           timestamp: new Date(),
-          ipAddress: req.ip || req.connection.remoteAddress,
+          ipAddress: getClientIp(req),
           userAgent: req.headers['user-agent'],
           status: 'DENIED',
           details: {
@@ -354,7 +452,7 @@ exports.requireAccessLevel = (minLevel) => {
         action: 'ACCESS_DENIED',
         resourceType: 'System',
         timestamp: new Date(),
-        ipAddress: req.ip || req.connection.remoteAddress,
+        ipAddress: getClientIp(req),
         userAgent: req.headers['user-agent'],
         status: 'DENIED',
         details: {

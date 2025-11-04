@@ -37,6 +37,14 @@ router.get('/:id',
   getPatient
 );
 
+// Break glass emergency access to patient
+router.post('/:id/break-glass',
+  authorize('admin', 'doctor', 'nurse'),
+  breakGlass,
+  logAccess('BREAK_GLASS_ACCESS', 'Patient'),
+  getPatient
+);
+
 // Update patient
 router.put('/:id',
   authorize('admin', 'doctor', 'nurse'),

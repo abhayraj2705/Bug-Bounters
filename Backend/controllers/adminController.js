@@ -282,3 +282,85 @@ exports.unlockUserAccount = async (req, res) => {
     });
   }
 };
+
+/**
+ * @desc    Suspend user account (Admin only)
+ * @route   POST /api/admin/users/:id/suspend
+ * @access  Private (Admin)
+ */
+exports.suspendUserAccount = async (req, res) => {
+  try {
+    const { reason, auditLogId } = req.body;
+
+    if (!reason || reason.length < 20) {
+      return res.status(400).json({
+        success: false,
+        message: 'Suspension reason is required (minimum 20 characters)'
+      });
+    }
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Prevent self-suspension
+    if (user._id.toString() === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot suspend your own account'
+      });
+    }
+
+    // Suspend user account
+    user.accountStatus = 'suspended';
+    user.suspensionReason = reason;
+    user.suspendedAt = new Date();
+    user.suspendedBy = req.user.id;
+    await user.save();
+
+    // Create audit log for suspension
+    await AuditLog.createLog({
+      user: req.user.id,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      action: 'SUSPEND_USER',
+      resourceType: 'User',
+      resourceId: user._id,
+      timestamp: new Date(),
+      ipAddress: req.ip || req.connection.remoteAddress,
+      userAgent: req.headers['user-agent'],
+      status: 'SUCCESS',
+      details: {
+        suspendedUser: user.username,
+        suspendedEmail: user.email,
+        reason: reason,
+        relatedAuditLog: auditLogId
+      },
+      hospitalId: req.user.attributes?.hospitalId,
+      department: req.user.attributes?.department
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'User account suspended successfully',
+      data: {
+        userId: user._id,
+        username: user.username,
+        status: user.accountStatus,
+        suspendedAt: user.suspendedAt
+      }
+    });
+  } catch (error) {
+    console.error('Suspend user account error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error suspending user account',
+      error: error.message
+    });
+  }
+};

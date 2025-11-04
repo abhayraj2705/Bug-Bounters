@@ -127,23 +127,43 @@ exports.getPatients = async (req, res) => {
  */
 exports.getPatient = async (req, res) => {
   try {
-    const patient = await Patient.findById(req.params.id)
-      .populate('assignedDoctors', 'firstName lastName email attributes')
-      .populate('assignedNurses', 'firstName lastName email');
+    let patient;
+    const searchId = req.params.id;
+    
+    console.log('[getPatient] Searching for patient with ID:', searchId);
+    
+    // Check if it's a valid MongoDB ObjectId format (24 hex characters)
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchId);
+    
+    if (isValidObjectId) {
+      // Valid MongoDB ObjectId format
+      console.log('[getPatient] Using MongoDB _id search');
+      patient = await Patient.findById(searchId)
+        .populate('assignedDoctors', 'firstName lastName email attributes')
+        .populate('assignedNurses', 'firstName lastName email');
+    } else {
+      // Try to find by patientId (P-xxx format) or other string identifier
+      console.log('[getPatient] Using patientId search');
+      patient = await Patient.findOne({ patientId: searchId })
+        .populate('assignedDoctors', 'firstName lastName email attributes')
+        .populate('assignedNurses', 'firstName lastName email');
+    }
 
     if (!patient) {
+      console.log('[getPatient] Patient not found');
       return res.status(404).json({
         success: false,
         message: 'Patient not found'
       });
     }
 
+    console.log('[getPatient] Patient found:', patient.patientId);
     res.status(200).json({
       success: true,
       data: patient
     });
   } catch (error) {
-    console.error('Get patient error:', error);
+    console.error('[getPatient] Error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching patient',

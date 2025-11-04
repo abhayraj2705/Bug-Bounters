@@ -83,7 +83,29 @@ exports.getPatientEHRs = async (req, res) => {
     const { patientId } = req.params;
     const { page = 1, limit = 10, sortBy = 'visitDate', order = 'desc' } = req.query;
 
-    const ehrs = await EHR.find({ patient: patientId })
+    console.log('[getPatientEHRs] Fetching EHRs for patient:', patientId);
+
+    // Find patient first to get MongoDB _id if patientId is in P-xxx format
+    const Patient = require('../models/Patient');
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(patientId);
+    let patient;
+    
+    if (isValidObjectId) {
+      patient = await Patient.findById(patientId);
+    } else {
+      patient = await Patient.findOne({ patientId: patientId });
+    }
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+
+    console.log('[getPatientEHRs] Found patient:', patient.patientId, 'MongoDB ID:', patient._id);
+
+    const ehrs = await EHR.find({ patient: patient._id })
       .sort({ [sortBy]: order === 'desc' ? -1 : 1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -92,7 +114,9 @@ exports.getPatientEHRs = async (req, res) => {
       .populate('nurseInCharge', 'firstName lastName')
       .exec();
 
-    const count = await EHR.countDocuments({ patient: patientId });
+    console.log('[getPatientEHRs] Found', ehrs.length, 'EHR records');
+
+    const count = await EHR.countDocuments({ patient: patient._id });
 
     res.status(200).json({
       success: true,

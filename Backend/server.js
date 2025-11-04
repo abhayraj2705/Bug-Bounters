@@ -30,17 +30,33 @@ app.use(helmet({
 }));
 
 // CORS configuration
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  process.env.CORS_ORIGIN
+].filter(Boolean);
+
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
 
-// Rate limiting
+// Rate limiting - Relaxed for development
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // Increased to 1000 for development
   message: 'Too many requests from this IP, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
@@ -49,10 +65,10 @@ const limiter = rateLimit({
 // Apply rate limiting to all routes
 app.use('/api/', limiter);
 
-// Stricter rate limiting for auth routes
+// Stricter rate limiting for auth routes - Relaxed for development
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // 50 requests per window (increased for development)
+  max: 200, // Increased to 200 requests per window for development
   message: 'Too many login attempts, please try again later',
   skipSuccessfulRequests: true
 });
@@ -111,6 +127,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/patients', require('./routes/patients'));
 app.use('/api/ehr', require('./routes/ehr'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));
+app.use('/api/hospitals', require('./routes/hospitals'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {

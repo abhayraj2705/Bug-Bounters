@@ -41,7 +41,16 @@ const auditLogSchema = new mongoose.Schema({
       'MFA_ENABLED',
       'MFA_DISABLED',
       'ROLE_CHANGE',
-      'ACCESS_DENIED'
+      'ACCESS_DENIED',
+      'VIEW_HOSPITALS',
+      'VIEW_HOSPITAL',
+      'CREATE_HOSPITAL',
+      'UPDATE_HOSPITAL',
+      'DELETE_HOSPITAL',
+      'UPDATE_HOSPITAL_STATUS',
+      'SYNC_HOSPITAL',
+      'TEST_HOSPITAL_CONNECTION',
+      'VIEW_NETWORK_STATS'
     ],
     required: true
   },
@@ -49,7 +58,7 @@ const auditLogSchema = new mongoose.Schema({
   // What resource was accessed
   resourceType: {
     type: String,
-    enum: ['EHR', 'Patient', 'User', 'System', 'Report'],
+    enum: ['EHR', 'Patient', 'User', 'System', 'Report', 'Hospital'],
     required: true
   },
   resourceId: {

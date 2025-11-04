@@ -1,4 +1,5 @@
 const AuditLog = require('../models/AuditLog');
+const { getClientIp } = require('../utils/ipHelper');
 
 /**
  * Middleware to log all EHR and Patient access
@@ -9,10 +10,35 @@ exports.logAccess = (action, resourceType) => {
     const originalSend = res.send;
 
     // Override send function to capture response
-    res.send = function (data) {
+    res.send = async function (data) {
       // Determine status
       const status = res.statusCode >= 200 && res.statusCode < 300 ? 'SUCCESS' : 
                      res.statusCode >= 400 && res.statusCode < 500 ? 'DENIED' : 'FAILURE';
+
+      // Find patient to get MongoDB _id if patientId is in P-xxx format
+      let resourceId = req.params.id || req.params.patientId || req.params.recordId;
+      let patientMongoId = null;
+      let patientIdString = null;
+      
+      if (resourceType === 'Patient' && resourceId) {
+        const Patient = require('../models/Patient');
+        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(resourceId);
+        
+        if (isValidObjectId) {
+          patientMongoId = resourceId;
+        } else {
+          try {
+            const patient = await Patient.findOne({ patientId: resourceId });
+            if (patient) {
+              patientMongoId = patient._id;
+              patientIdString = patient.patientId;
+            }
+          } catch (err) {
+            console.log('[logAccess] Could not find patient:', err.message);
+          }
+        }
+        resourceId = patientMongoId || resourceId;
+      }
 
       // Create audit log
       const logData = {
@@ -21,10 +47,11 @@ exports.logAccess = (action, resourceType) => {
         userRole: req.user?.role,
         action: action,
         resourceType: resourceType,
-        resourceId: req.params.id || req.params.patientId || req.params.recordId,
-        patient: req.params.patientId,
+        resourceId: resourceId,
+        patient: patientMongoId || req.params.patientId,
+        patientId: patientIdString,
         timestamp: new Date(),
-        ipAddress: req.ip || req.connection.remoteAddress,
+        ipAddress: getClientIp(req),
         userAgent: req.headers['user-agent'],
         accessMethod: 'web',
         status: status,
@@ -88,17 +115,38 @@ exports.breakGlass = async (req, res, next) => {
       timestamp: new Date()
     };
 
+    // Find the patient to get MongoDB _id if patientId is provided
+    const Patient = require('../models/Patient');
+    const searchId = req.params.id || req.params.patientId;
+    let patientMongoId = null;
+    let patientIdString = null;
+    
+    // Check if it's a MongoDB ObjectId or patientId
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(searchId);
+    
+    if (isValidObjectId) {
+      patientMongoId = searchId;
+    } else {
+      // Find patient by patientId to get MongoDB _id
+      const patient = await Patient.findOne({ patientId: searchId });
+      if (patient) {
+        patientMongoId = patient._id;
+        patientIdString = patient.patientId;
+      }
+    }
+
     // Create immediate audit log for break glass
     await AuditLog.createLog({
       user: req.user.id,
       userEmail: req.user.email,
       userRole: req.user.role,
       action: 'BREAK_GLASS_ACCESS',
-      resourceType: 'System',
-      resourceId: req.params.id || req.params.patientId,
-      patient: req.params.patientId,
+      resourceType: 'Patient',
+      resourceId: patientMongoId,
+      patient: patientMongoId,
+      patientId: patientIdString || searchId,
       timestamp: new Date(),
-      ipAddress: req.ip || req.connection.remoteAddress,
+      ipAddress: getClientIp(req),
       userAgent: req.headers['user-agent'],
       accessMethod: 'emergency',
       status: 'SUCCESS',
@@ -107,7 +155,8 @@ exports.breakGlass = async (req, res, next) => {
         justification: justification
       },
       details: {
-        requestedPath: req.originalUrl
+        requestedPath: req.originalUrl,
+        searchId: searchId
       },
       hospitalId: req.user.attributes?.hospitalId,
       department: req.user.attributes?.department

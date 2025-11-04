@@ -2,6 +2,7 @@ const User = require('../models/User');
 const AuditLog = require('../models/AuditLog');
 const { generateAccessToken, generateRefreshToken, verifyToken } = require('../utils/jwt');
 const { generateMFASecret, generateQRCode, verifyMFAToken, generateBackupCodes } = require('../utils/mfa');
+const { getClientIp } = require('../utils/ipHelper');
 const bcrypt = require('bcryptjs');
 
 /**
@@ -188,6 +189,60 @@ exports.login = async (req, res) => {
 
     // Check if MFA is enabled
     if (user.mfa.enabled) {
+      console.log('[login] MFA is enabled for user:', user.email);
+      console.log('[login] MFA has secret:', !!user.mfa.secret);
+      console.log('[login] MFA secret length:', user.mfa.secret?.length);
+      
+      // Check if MFA secret exists
+      if (!user.mfa.secret) {
+        console.log('[login] ERROR: MFA enabled but no secret found! Disabling MFA for user.');
+        // Auto-disable MFA if secret is missing (data integrity issue)
+        user.mfa.enabled = false;
+        await user.save();
+        
+        // Continue with normal login
+        const accessToken = generateAccessToken(user._id, user.role);
+        const refreshToken = generateRefreshToken(user._id);
+        
+        user.lastLogin = new Date();
+        await user.save();
+        
+        await AuditLog.createLog({
+          user: user._id,
+          userEmail: user.email,
+          userRole: user.role,
+          action: 'LOGIN',
+          resourceType: 'System',
+          timestamp: new Date(),
+          ipAddress: req.ip || req.connection.remoteAddress,
+          userAgent: req.headers['user-agent'],
+          status: 'SUCCESS',
+          hospitalId: user.attributes.hospitalId,
+          department: user.attributes.department,
+          details: {
+            warning: 'MFA was enabled but secret was missing - auto-disabled'
+          }
+        });
+        
+        return res.status(200).json({
+          success: true,
+          tokens: {
+            accessToken,
+            refreshToken
+          },
+          user: {
+            id: user._id,
+            username: user.username,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role,
+            attributes: user.attributes,
+            mfaEnabled: false
+          }
+        });
+      }
+      
       // Generate temporary token for MFA verification
       const mfaToken = generateAccessToken(user._id, user.role);
       
@@ -258,6 +313,10 @@ exports.verifyMFA = async (req, res) => {
   try {
     const { mfaToken, code } = req.body;
 
+    console.log('[verifyMFA] Received code:', code);
+    console.log('[verifyMFA] Code type:', typeof code);
+    console.log('[verifyMFA] Code length:', code?.length);
+
     if (!mfaToken || !code) {
       return res.status(400).json({
         success: false,
@@ -267,19 +326,26 @@ exports.verifyMFA = async (req, res) => {
 
     // Verify MFA token
     const decoded = verifyToken(mfaToken);
+    console.log('[verifyMFA] Decoded user ID:', decoded.id);
     
     // Find user with MFA secret
     const user = await User.findById(decoded.id).select('+mfa.secret +mfa.backupCodes');
 
     if (!user || !user.mfa.enabled) {
+      console.log('[verifyMFA] User not found or MFA not enabled');
       return res.status(400).json({
         success: false,
         message: 'Invalid request'
       });
     }
 
+    console.log('[verifyMFA] User found:', user.email);
+    console.log('[verifyMFA] MFA enabled:', user.mfa.enabled);
+    console.log('[verifyMFA] Has MFA secret:', !!user.mfa.secret);
+
     // Verify the MFA code
     const isValid = verifyMFAToken(user.mfa.secret, code);
+    console.log('[verifyMFA] Code validation result:', isValid);
     
     // Check if it's a backup code
     let isBackupCode = false;
@@ -379,7 +445,7 @@ exports.verifyMFA = async (req, res) => {
  */
 exports.setupMFA = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id).select('+mfa.secret +mfa.backupCodes');
 
     if (!user) {
       return res.status(404).json({
@@ -388,7 +454,7 @@ exports.setupMFA = async (req, res) => {
       });
     }
 
-    if (user.mfa.enabled) {
+    if (user.mfa?.enabled) {
       return res.status(400).json({
         success: false,
         message: 'MFA is already enabled'
@@ -409,10 +475,17 @@ exports.setupMFA = async (req, res) => {
       backupCodes.map(code => bcrypt.hash(code, 10))
     );
 
-    // Save secret (not enabled yet)
-    user.mfa.secret = secret;
-    user.mfa.backupCodes = hashedBackupCodes;
-    await user.save();
+    // Use findByIdAndUpdate to avoid version conflicts
+    await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        $set: {
+          'mfa.secret': secret,
+          'mfa.backupCodes': hashedBackupCodes
+        }
+      },
+      { new: true }
+    );
 
     res.status(200).json({
       success: true,
@@ -468,9 +541,12 @@ exports.enableMFA = async (req, res) => {
       });
     }
 
-    // Enable MFA
-    user.mfa.enabled = true;
-    await user.save();
+    // Enable MFA using findByIdAndUpdate to avoid version conflicts
+    await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: { 'mfa.enabled': true } },
+      { new: true }
+    );
 
     // Create audit log
     await AuditLog.createLog({
@@ -538,11 +614,15 @@ exports.disableMFA = async (req, res) => {
       }
     }
 
-    // Disable MFA
-    user.mfa.enabled = false;
-    user.mfa.secret = undefined;
-    user.mfa.backupCodes = undefined;
-    await user.save();
+    // Disable MFA using findByIdAndUpdate to avoid version conflicts
+    await User.findByIdAndUpdate(
+      req.user.id,
+      { 
+        $set: { 'mfa.enabled': false },
+        $unset: { 'mfa.secret': '', 'mfa.backupCodes': '' }
+      },
+      { new: true }
+    );
 
     // Create audit log
     await AuditLog.createLog({
