@@ -84,7 +84,12 @@ export const authAPI = {
 // Patient APIs
 export const patientAPI = {
   getAll: (params) => api.get('/patients', { params }),
-  getById: (id) => api.get(`/patients/${id}`),
+  getById: (id, breakGlassData = null) => {
+    if (breakGlassData) {
+      return api.post(`/patients/${id}/break-glass`, breakGlassData);
+    }
+    return api.get(`/patients/${id}`);
+  },
   create: (data) => api.post('/patients', data),
   update: (id, data) => api.put(`/patients/${id}`, data),
   delete: (id) => api.delete(`/patients/${id}`),
@@ -96,16 +101,17 @@ export const patientAPI = {
 export const ehrAPI = {
   getMyPatients: (params) => api.get('/ehr/my-patients', { params }),
   getPatientEHRs: (patientId, params) => api.get(`/ehr/patient/${patientId}`, { params }),
-  getById: (id) => api.get(`/ehr/${id}`),
+  getById: (id, breakGlassData = null) => {
+    if (breakGlassData) {
+      return api.post(`/ehr/${id}/break-glass`, breakGlassData);
+    }
+    return api.get(`/ehr/${id}`);
+  },
   create: (data) => api.post('/ehr', data),
   update: (id, data) => api.put(`/ehr/${id}`, data),
   amend: (id, data) => api.post(`/ehr/${id}/amend`, data),
   sign: (id) => api.post(`/ehr/${id}/sign`),
   delete: (id) => api.delete(`/ehr/${id}`),
-  breakGlassAccess: (id, justification) => 
-    api.get(`/ehr/${id}`, { 
-      data: { emergencyAccess: true, justification } 
-    }),
 };
 
 // Audit Log APIs
@@ -124,7 +130,21 @@ export const adminAPI = {
   updateUser: (id, data) => api.put(`/admin/users/${id}`, data),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
   unlockUser: (id) => api.post(`/admin/users/${id}/unlock`),
+  suspendUser: (id, data) => api.post(`/admin/users/${id}/suspend`, data),
   getSystemStats: () => api.get('/admin/stats'),
+};
+
+// Hospital Network APIs
+export const hospitalAPI = {
+  getAll: (params) => api.get('/hospitals', { params }),
+  getById: (id) => api.get(`/hospitals/${id}`),
+  create: (data) => api.post('/hospitals', data),
+  update: (id, data) => api.put(`/hospitals/${id}`, data),
+  delete: (id) => api.delete(`/hospitals/${id}`),
+  updateStatus: (id, status) => api.put(`/hospitals/${id}/status`, { status }),
+  syncStats: (id) => api.post(`/hospitals/${id}/sync`),
+  testConnection: (id) => api.post(`/hospitals/${id}/test-connection`),
+  getNetworkStats: () => api.get('/hospitals/stats/network'),
 };
 
 export default api;

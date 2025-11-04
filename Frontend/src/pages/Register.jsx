@@ -26,6 +26,12 @@ const Register = () => {
     });
   };
 
+  const handleHospitalPortalClick = () => {
+    toast.info('Hospital Network Portal requires admin login. Please complete registration and contact your administrator for admin access.', {
+      autoClose: 5000
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -295,14 +301,36 @@ const Register = () => {
             </button>
           </form>
 
-          {/* Login Link */}
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Already have an account?{' '}
-              <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
-                Sign in here
-              </Link>
-            </p>
+          {/* Navigation Links */}
+          <div className="mt-6 space-y-3">
+            <div className="text-center">
+              <p className="text-sm text-gray-600">
+                Already have an account?{' '}
+                <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+                  Sign in here
+                </Link>
+              </p>
+            </div>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300"></div>
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="px-2 bg-gray-50 text-gray-500">Or</span>
+              </div>
+            </div>
+
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={handleHospitalPortalClick}
+                className="inline-flex items-center justify-center text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors"
+              >
+                <Shield className="h-4 w-4 mr-1" />
+                Access Hospital Network Portal
+              </button>
+            </div>
           </div>
         </div>
 

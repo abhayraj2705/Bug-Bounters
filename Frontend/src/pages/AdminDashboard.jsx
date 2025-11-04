@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import { authAPI, adminAPI } from '../services/api';
+import { authAPI, adminAPI, hospitalAPI } from '../services/api';
 import { 
   Users, 
   Activity, 
@@ -14,7 +14,8 @@ import {
   UserPlus,
   BarChart3,
   FileText,
-  Unlock
+  Unlock,
+  CheckCircle
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -22,11 +23,13 @@ const AdminDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
+  const [hospitals, setHospitals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [hospitalFilter, setHospitalFilter] = useState('');
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -71,9 +74,20 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchHospitals = async () => {
+    try {
+      const response = await hospitalAPI.getAll();
+      setHospitals(response.data.data || []);
+    } catch (error) {
+      console.error('Error fetching hospitals:', error);
+      toast.error('Failed to load hospitals');
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
     fetchStats();
+    fetchHospitals();
   }, []);
 
   const handleAddUser = async (e) => {
@@ -115,7 +129,13 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error('Error creating user:', error);
       if (error.response?.status === 400) {
-        toast.error(error.response.data?.message || 'Invalid user data');
+        const errorMsg = error.response.data?.message || 'Invalid user data';
+        // Check if it's an email validation error
+        if (errorMsg.toLowerCase().includes('email')) {
+          toast.error('Please enter a valid email address with a proper domain (e.g., user@example.com)');
+        } else {
+          toast.error(errorMsg);
+        }
       } else {
         toast.error('Failed to create user');
       }
@@ -169,15 +189,33 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleActivateUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to activate this user account?')) return;
+    
+    try {
+      await adminAPI.updateUser(userId, { isActive: true });
+      toast.success('User account activated successfully!');
+      fetchUsers();
+      fetchStats();
+    } catch (error) {
+      console.error('Error activating user:', error);
+      toast.error(error.response?.data?.message || 'Failed to activate user');
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
   };
 
-  const filteredUsers = users.filter(u => 
-    u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.role?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.role?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesHospital = !hospitalFilter || u.attributes?.hospitalId === hospitalFilter;
+    
+    return matchesSearch && matchesHospital;
+  });
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -193,9 +231,31 @@ const AdminDashboard = () => {
               </div>
             </div>
             <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate('/mfa-setup')}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center space-x-2"
+              >
+                <Shield className="h-4 w-4" />
+                <span>MFA Setup</span>
+              </button>
+              <button
+                onClick={() => navigate('/admin/hospitals')}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition flex items-center space-x-2"
+              >
+                <Activity className="h-4 w-4" />
+                <span>Hospital Network</span>
+              </button>
+              <button
+                onClick={() => navigate('/admin/audit-logs')}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition flex items-center space-x-2"
+              >
+                <FileText className="h-4 w-4" />
+                <span>Audit Logs</span>
+              </button>
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">{user?.firstName} {user?.lastName}</p>
                 <p className="text-xs text-gray-500">{user?.role}</p>
+                {user?.mfaEnabled && <p className="text-xs text-green-600 flex items-center justify-end"><Shield className="h-3 w-3 mr-1" />MFA Enabled</p>}
               </div>
               <button
                 onClick={handleLogout}
@@ -280,16 +340,32 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Search Bar */}
-            <div className="mt-4 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search users by username, email, or role..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+            {/* Search and Filter Bar */}
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="relative md:col-span-2">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search users by username, email, or role..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <select
+                  value={hospitalFilter}
+                  onChange={(e) => setHospitalFilter(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">All Hospitals</option>
+                  {hospitals.map((hospital) => (
+                    <option key={hospital._id} value={hospital.hospitalId}>
+                      {hospital.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -311,6 +387,9 @@ const AdminDashboard = () => {
                     Department
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Hospital
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status & Actions
                   </th>
                 </tr>
@@ -318,13 +397,13 @@ const AdminDashboard = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
                       Loading users...
                     </td>
                   </tr>
                 ) : filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan="6" className="px-6 py-4 text-center text-gray-500">
                       No users found. Click "Add User" to create the first user.
                     </td>
                   </tr>
@@ -361,6 +440,9 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {u.attributes?.department || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {hospitals.find(h => h.hospitalId === u.attributes?.hospitalId)?.name || u.attributes?.hospitalId || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-3">
@@ -399,14 +481,23 @@ const AdminDashboard = () => {
                               <Unlock className="h-4 w-4" />
                             </button>
                           )}
-                          <button
-                            onClick={() => handleDeleteUser(u._id)}
-                            title={u.isActive ? 'Deactivate user' : 'User already inactive'}
-                            disabled={!u.isActive}
-                            className={`${!u.isActive ? 'text-gray-400 cursor-not-allowed' : 'text-red-600 hover:text-red-900'}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {!u.isActive ? (
+                            <button
+                              onClick={() => handleActivateUser(u._id)}
+                              className="text-green-600 hover:text-green-900"
+                              title="Activate user"
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleDeleteUser(u._id)}
+                              title="Deactivate user"
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -481,9 +572,12 @@ const AdminDashboard = () => {
                 <input
                   type="email"
                   required
+                  pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+                  title="Please enter a valid email address (e.g., user@example.com)"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="user@example.com"
                 />
               </div>
 
@@ -541,6 +635,25 @@ const AdminDashboard = () => {
                     <option value="reception">Reception</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Hospital *
+                </label>
+                <select
+                  required
+                  value={formData.hospitalId}
+                  onChange={(e) => setFormData({...formData, hospitalId: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Select Hospital</option>
+                  {hospitals.map((hospital) => (
+                    <option key={hospital._id} value={hospital.hospitalId}>
+                      {hospital.name} ({hospital.hospitalId})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex justify-end space-x-3 pt-4">
@@ -631,9 +744,12 @@ const AdminDashboard = () => {
                 <input
                   type="email"
                   required
+                  pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"
+                  title="Please enter a valid email address (e.g., user@example.com)"
                   value={selectedUser.email}
                   onChange={(e) => setSelectedUser({...selectedUser, email: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="user@example.com"
                 />
               </div>
 
@@ -680,6 +796,28 @@ const AdminDashboard = () => {
                     <option value="reception">Reception</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Hospital *
+                </label>
+                <select
+                  required
+                  value={selectedUser.attributes?.hospitalId || ''}
+                  onChange={(e) => setSelectedUser({
+                    ...selectedUser, 
+                    attributes: {...selectedUser.attributes, hospitalId: e.target.value}
+                  })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Select Hospital</option>
+                  {hospitals.map((hospital) => (
+                    <option key={hospital._id} value={hospital.hospitalId}>
+                      {hospital.name} ({hospital.hospitalId})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="flex justify-end space-x-3 pt-4">

@@ -6,7 +6,7 @@ import { toast } from 'react-toastify';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login, verifyMFA, requiresMFA } = useAuth();
+  const { login, verifyMFA, requiresMFA, resetMFA } = useAuth();
   
   const [formData, setFormData] = useState({
     email: '',
@@ -15,6 +15,29 @@ const Login = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Reset MFA state on component mount to avoid stale state
+  // Use empty dependency array to only run once on mount
+  React.useEffect(() => {
+    console.log('[Login] Component mounted, resetting MFA state');
+    if (resetMFA) {
+      resetMFA();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty array = only run on mount
+
+  // Debug: Log requiresMFA changes
+  React.useEffect(() => {
+    console.log('[Login] requiresMFA changed to:', requiresMFA);
+  }, [requiresMFA]);
+
+  const handleHospitalPortalClick = () => {
+    toast.info('Please login with admin credentials to access Hospital Network Portal', {
+      autoClose: 4000
+    });
+    // Optionally navigate to login (already on login page)
+    // Or could navigate to /admin/hospitals which will redirect back to login
+  };
 
   const handleChange = (e) => {
     setFormData({
@@ -28,32 +51,39 @@ const Login = () => {
     setLoading(true);
 
     try {
+      console.log('[Login] Attempting login for:', formData.email);
       const result = await login(formData.email, formData.password);
-      console.log('Login result:', result);
+      console.log('[Login] Login result:', result);
+      console.log('[Login] Requires MFA:', result?.requiresMFA);
       
-      if (!result.requiresMFA) {
+      if (!result?.requiresMFA) {
         // Redirect based on role
-        const role = result.user.role;
-        console.log('Navigating based on role:', role);
+        const role = result?.user?.role;
+        console.log('[Login] User role:', role);
+        console.log('[Login] Navigating to dashboard...');
         
-        // Use setTimeout to ensure navigation happens after state updates
-        setTimeout(() => {
-          if (role === 'admin') {
-            navigate('/admin/dashboard', { replace: true });
-          } else if (role === 'doctor') {
-            navigate('/doctor/dashboard', { replace: true });
-          } else if (role === 'nurse') {
-            navigate('/nurse/dashboard', { replace: true });
-          } else if (role === 'staff') {
-            // Staff users go to nurse dashboard (they can view patient data)
-            navigate('/nurse/dashboard', { replace: true });
-          } else {
-            navigate('/dashboard', { replace: true });
-          }
-        }, 100);
+        if (role === 'admin') {
+          console.log('[Login] Navigating to admin dashboard');
+          navigate('/admin/dashboard', { replace: true });
+        } else if (role === 'doctor') {
+          console.log('[Login] Navigating to doctor dashboard');
+          navigate('/doctor/dashboard', { replace: true });
+        } else if (role === 'nurse') {
+          console.log('[Login] Navigating to nurse dashboard');
+          navigate('/nurse/dashboard', { replace: true });
+        } else if (role === 'staff') {
+          console.log('[Login] Navigating to staff dashboard');
+          // Staff users go to nurse dashboard (they can view patient data)
+          navigate('/nurse/dashboard', { replace: true });
+        } else {
+          console.log('[Login] Navigating to default dashboard');
+          navigate('/dashboard', { replace: true });
+        }
+      } else {
+        console.log('[Login] MFA required, staying on login page');
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('[Login] Login error:', error);
       if (!error.response) {
         toast.error('Cannot connect to server. Please make sure the backend is running on port 5000.');
       } else if (error.response.status === 401) {
@@ -74,29 +104,32 @@ const Login = () => {
 
     try {
       const result = await verifyMFA(formData.mfaCode);
-      console.log('MFA result:', result);
+      console.log('[Login] MFA result:', result);
       
       // Redirect based on role
-      const role = result.user.role;
-      console.log('Navigating based on role after MFA:', role);
+      const role = result?.user?.role;
+      console.log('[Login] User role after MFA:', role);
+      console.log('[Login] Navigating to dashboard after MFA...');
       
-      // Use setTimeout to ensure navigation happens after state updates
-      setTimeout(() => {
-        if (role === 'admin') {
-          navigate('/admin/dashboard', { replace: true });
-        } else if (role === 'doctor') {
-          navigate('/doctor/dashboard', { replace: true });
-        } else if (role === 'nurse') {
-          navigate('/nurse/dashboard', { replace: true });
-        } else if (role === 'staff') {
-          // Staff users go to nurse dashboard (they can view patient data)
-          navigate('/nurse/dashboard', { replace: true });
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
-      }, 100);
+      if (role === 'admin') {
+        console.log('[Login] Navigating to admin dashboard');
+        navigate('/admin/dashboard', { replace: true });
+      } else if (role === 'doctor') {
+        console.log('[Login] Navigating to doctor dashboard');
+        navigate('/doctor/dashboard', { replace: true });
+      } else if (role === 'nurse') {
+        console.log('[Login] Navigating to nurse dashboard');
+        navigate('/nurse/dashboard', { replace: true });
+      } else if (role === 'staff') {
+        console.log('[Login] Navigating to staff dashboard');
+        // Staff users go to nurse dashboard (they can view patient data)
+        navigate('/nurse/dashboard', { replace: true });
+      } else {
+        console.log('[Login] Navigating to default dashboard');
+        navigate('/dashboard', { replace: true });
+      }
     } catch (error) {
-      console.error('MFA verification error:', error);
+      console.error('[Login] MFA verification error:', error);
       if (!error.response) {
         toast.error('Cannot connect to server. Please make sure the backend is running on port 5000.');
       } else if (error.response.status === 401) {
@@ -111,7 +144,10 @@ const Login = () => {
     }
   };
 
+  console.log('[Login] Render - requiresMFA:', requiresMFA);
+
   if (requiresMFA) {
+    console.log('[Login] Showing MFA form');
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
         <div className="max-w-md w-full space-y-8 p-10 bg-white rounded-xl shadow-2xl">
@@ -232,6 +268,37 @@ const Login = () => {
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+          </div>
+
+          {/* Navigation Links */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <button
+                type="button"
+                onClick={() => navigate('/register')}
+                className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors"
+              >
+                Don't have an account? Register
+              </button>
+            </div>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300"></div>
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="px-2 bg-white text-gray-500">Or</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleHospitalPortalClick}
+              className="w-full flex justify-center items-center py-2 px-4 border border-indigo-300 text-sm font-medium rounded-lg text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+            >
+              <Shield className="h-4 w-4 mr-2" />
+              Hospital Network Portal
             </button>
           </div>
 

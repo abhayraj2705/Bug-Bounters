@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { patientAPI, ehrAPI } from '../services/api';
 import { 
   Users, 
@@ -11,12 +12,15 @@ import {
   Eye,
   X,
   Stethoscope,
-  ClipboardList
+  ClipboardList,
+  Shield
 } from 'lucide-react';
 import { toast } from 'react-toastify';
+import BreakGlassAccess from '../components/BreakGlassAccess';
 
 const DoctorDashboard = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,6 +28,8 @@ const DoctorDashboard = () => {
   const [showAddEHR, setShowAddEHR] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientEHRs, setPatientEHRs] = useState([]);
+  const [showBreakGlass, setShowBreakGlass] = useState(false);
+  const [breakGlassPatientId, setBreakGlassPatientId] = useState(null);
   const [stats, setStats] = useState({
     totalPatients: 0,
     todayAppointments: 0,
@@ -201,6 +207,7 @@ const DoctorDashboard = () => {
 
   const handleViewPatientEHRs = async (patient) => {
     try {
+      console.log('Viewing EHRs for patient:', patient._id, patient.firstName, patient.lastName);
       setSelectedPatient(patient);
       const response = await ehrAPI.getPatientEHRs(patient._id);
       console.log('EHR Response:', response.data);
@@ -208,12 +215,50 @@ const DoctorDashboard = () => {
       // Backend returns: { success: true, data: [...ehrs], pagination: {...} }
       const ehrsList = response.data?.data || [];
       console.log('Patient EHRs:', ehrsList);
+      console.log('Number of EHRs found:', ehrsList.length);
       
       setPatientEHRs(Array.isArray(ehrsList) ? ehrsList : []);
+      
+      if (ehrsList.length === 0) {
+        toast.info('No EHR records found for this patient');
+      }
     } catch (error) {
       console.error('Error fetching patient EHRs:', error);
-      toast.error('Failed to fetch patient records');
+      console.error('Error response:', error.response);
+      
+      // Check if this is a permission error (403) that requires break glass
+      if (error.response?.status === 403) {
+        toast.warning('Access denied. Use Break Glass for emergency access.');
+        setBreakGlassPatientId(patient._id);
+        setShowBreakGlass(true);
+      } else {
+        const errorMsg = error.response?.data?.message || 'Failed to fetch patient records';
+        toast.error(errorMsg);
+      }
       setPatientEHRs([]);
+    }
+  };
+
+  const handleBreakGlassAccess = async (justification) => {
+    try {
+      // Fetch patient data with break glass access
+      const patientResponse = await patientAPI.getById(breakGlassPatientId, { justification });
+      const patient = patientResponse.data?.data || patientResponse.data;
+      
+      setSelectedPatient(patient);
+      
+      // Fetch EHR records with break glass access
+      const ehrResponse = await ehrAPI.getPatientEHRs(breakGlassPatientId);
+      const ehrsList = ehrResponse.data?.data || [];
+      
+      setPatientEHRs(Array.isArray(ehrsList) ? ehrsList : []);
+      setShowBreakGlass(false);
+      setBreakGlassPatientId(null);
+      
+      toast.success('Emergency access granted. This action has been logged.');
+    } catch (error) {
+      console.error('Break glass access error:', error);
+      throw error; // Let the BreakGlassAccess component handle the error
     }
   };
 
@@ -244,7 +289,16 @@ const DoctorDashboard = () => {
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">Dr. {user?.firstName} {user?.lastName}</p>
                 <p className="text-xs text-gray-500">{user?.attributes?.specialization || 'Doctor'}</p>
+                {user?.mfaEnabled && <p className="text-xs text-green-600 flex items-center justify-end"><Shield className="h-3 w-3 mr-1" />MFA Enabled</p>}
               </div>
+              <button
+                onClick={() => navigate('/mfa-setup')}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition flex items-center space-x-2"
+                title="Setup Two-Factor Authentication"
+              >
+                <Shield className="h-4 w-4" />
+                <span>MFA Setup</span>
+              </button>
               <button
                 onClick={handleLogout}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition"
@@ -859,6 +913,18 @@ const DoctorDashboard = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Break Glass Access Modal */}
+      {showBreakGlass && (
+        <BreakGlassAccess
+          patientId={breakGlassPatientId}
+          onAccessGranted={handleBreakGlassAccess}
+          onCancel={() => {
+            setShowBreakGlass(false);
+            setBreakGlassPatientId(null);
+          }}
+        />
       )}
     </div>
   );

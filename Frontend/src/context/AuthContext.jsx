@@ -45,17 +45,29 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await authAPI.login({ email, password });
+      console.log('[AuthContext] Login response:', response.data);
       
       // Handle MFA requirement
       if (response.data.requiresMFA) {
+        console.log('[AuthContext] MFA required, setting state');
+        console.log('[AuthContext] MFA token:', response.data.mfaToken);
         setRequiresMFA(true);
         setMfaToken(response.data.mfaToken);
-        return { requiresMFA: true };
+        console.log('[AuthContext] State updated - requiresMFA should now be true');
+        return { requiresMFA: true, mfaToken: response.data.mfaToken };
       }
+
+      console.log('[AuthContext] MFA not required, proceeding with tokens');
 
       // Extract tokens and user data from response
       const tokens = response.data.tokens;
       const userData = response.data.user;
+      
+      console.log('[AuthContext] Tokens:', { 
+        hasAccessToken: !!tokens?.accessToken, 
+        hasRefreshToken: !!tokens?.refreshToken 
+      });
+      console.log('[AuthContext] User data:', userData);
       
       // Store in localStorage
       localStorage.setItem('accessToken', tokens.accessToken);
@@ -66,6 +78,9 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
       setRequiresMFA(false);
       setMfaToken(null);
+      
+      console.log('[AuthContext] State updated, user:', userData);
+      console.log('[AuthContext] isAuthenticated will be:', !!userData);
       
       toast.success('Login successful!');
       return { success: true, user: userData, requiresMFA: false };
@@ -146,6 +161,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const resetMFA = () => {
+    setRequiresMFA(false);
+    setMfaToken(null);
+  };
+
   const register = async (userData) => {
     try {
       const response = await authAPI.register(userData);
@@ -176,6 +196,47 @@ export const AuthProvider = ({ children }) => {
     return false;
   };
 
+  // MFA MANAGEMENT FUNCTIONS
+  const setupMFA = async () => {
+    try {
+      const response = await authAPI.setupMFA();
+      return response.data.data; // { qrCode, secret, backupCodes }
+    } catch (error) {
+      toast.error('Failed to setup MFA');
+      throw error;
+    }
+  };
+
+  const enableMFA = async (code) => {
+    try {
+      await authAPI.enableMFA(code);
+      // Update user state to reflect MFA enabled
+      const updatedUser = { ...user, mfaEnabled: true };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      toast.success('MFA enabled successfully!');
+      return true;
+    } catch (error) {
+      toast.error('Invalid verification code');
+      throw error;
+    }
+  };
+
+  const disableMFA = async (password, code) => {
+    try {
+      await authAPI.disableMFA(password, code);
+      // Update user state
+      const updatedUser = { ...user, mfaEnabled: false };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      toast.success('MFA disabled successfully');
+      return true;
+    } catch (error) {
+      toast.error('Failed to disable MFA');
+      throw error;
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -184,6 +245,10 @@ export const AuthProvider = ({ children }) => {
     verifyMFA,
     logout,
     register,
+    resetMFA,      // Reset MFA state
+    setupMFA,      // NEW
+    enableMFA,     // NEW
+    disableMFA,    // NEW
     hasRole,
     hasPermission,
     isAuthenticated: !!user,

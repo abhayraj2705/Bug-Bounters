@@ -10,6 +10,8 @@ import AdminDashboard from './pages/AdminDashboard';
 import DoctorDashboard from './pages/DoctorDashboard';
 import NurseDashboard from './pages/NurseDashboard';
 import AuditLogs from './pages/AuditLogs';
+import MFASetup from './pages/MFASetup';
+import HospitalManagement from './pages/HospitalManagement';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import './App.css';
 
@@ -53,6 +55,30 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <AuditLogs />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/mfa-setup"
+              element={
+                <ProtectedRoute>
+                  <MFASetup />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/hospitals"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <HospitalManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/hospital-network"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <HospitalManagement />
                 </ProtectedRoute>
               }
             />
