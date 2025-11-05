@@ -62,6 +62,9 @@ const Login = () => {
         console.log('[Login] User role:', role);
         console.log('[Login] Navigating to dashboard...');
         
+        // Small delay to ensure state is fully updated
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         if (role === 'admin') {
           console.log('[Login] Navigating to admin dashboard');
           navigate('/admin/dashboard', { replace: true });
@@ -75,6 +78,9 @@ const Login = () => {
           console.log('[Login] Navigating to staff dashboard');
           // Staff users go to nurse dashboard (they can view patient data)
           navigate('/nurse/dashboard', { replace: true });
+        } else if (role === 'patient') {
+          console.log('[Login] Navigating to patient dashboard');
+          navigate('/patient/dashboard', { replace: true });
         } else {
           console.log('[Login] Navigating to default dashboard');
           navigate('/dashboard', { replace: true });
@@ -111,6 +117,9 @@ const Login = () => {
       console.log('[Login] User role after MFA:', role);
       console.log('[Login] Navigating to dashboard after MFA...');
       
+      // Small delay to ensure state is fully updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       if (role === 'admin') {
         console.log('[Login] Navigating to admin dashboard');
         navigate('/admin/dashboard', { replace: true });
@@ -124,6 +133,9 @@ const Login = () => {
         console.log('[Login] Navigating to staff dashboard');
         // Staff users go to nurse dashboard (they can view patient data)
         navigate('/nurse/dashboard', { replace: true });
+      } else if (role === 'patient') {
+        console.log('[Login] Navigating to patient dashboard');
+        navigate('/patient/dashboard', { replace: true });
       } else {
         console.log('[Login] Navigating to default dashboard');
         navigate('/dashboard', { replace: true });

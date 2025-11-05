@@ -26,13 +26,28 @@ export const AuthProvider = ({ children }) => {
 
       if (token && userData) {
         try {
-          setUser(JSON.parse(userData));
+          const parsedUser = JSON.parse(userData);
+          setUser(parsedUser);
+          console.log('[AuthContext] User loaded from localStorage:', parsedUser);
+          
           // Optionally verify token with backend
-          const response = await authAPI.getMe();
-          setUser(response.data.data);
-          localStorage.setItem('user', JSON.stringify(response.data.data));
+          try {
+            const response = await authAPI.getMe();
+            console.log('[AuthContext] getMe response:', response.data);
+            setUser(response.data.data);
+            localStorage.setItem('user', JSON.stringify(response.data.data));
+          } catch (verifyError) {
+            console.warn('[AuthContext] getMe failed, but keeping localStorage user:', verifyError);
+            // Keep the user from localStorage if getMe fails
+            // Only logout if it's a 401 (unauthorized)
+            if (verifyError.response?.status === 401) {
+              console.log('[AuthContext] Token expired, logging out');
+              logout();
+            }
+          }
         } catch (error) {
           console.error('Auth initialization error:', error);
+          // Only logout if there's a parsing error or 401
           logout();
         }
       }

@@ -237,7 +237,8 @@ exports.login = async (req, res) => {
             firstName: user.firstName,
             lastName: user.lastName,
             role: user.role,
-            attributes: user.attributes,
+            attributes: user.attributes || {},
+            patientId: user.patientId || null,
             mfaEnabled: false
           }
         });
@@ -273,8 +274,8 @@ exports.login = async (req, res) => {
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.headers['user-agent'],
       status: 'SUCCESS',
-      hospitalId: user.attributes.hospitalId,
-      department: user.attributes.department
+      hospitalId: user.attributes?.hospitalId || null,
+      department: user.attributes?.department || null
     });
 
     res.status(200).json({
@@ -290,7 +291,8 @@ exports.login = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        attributes: user.attributes,
+        attributes: user.attributes || {},
+        patientId: user.patientId || null,
         mfaEnabled: user.mfa.enabled
       }
     });
@@ -404,8 +406,8 @@ exports.verifyMFA = async (req, res) => {
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.headers['user-agent'],
       status: 'SUCCESS',
-      hospitalId: user.attributes.hospitalId,
-      department: user.attributes.department,
+      hospitalId: user.attributes?.hospitalId || null,
+      department: user.attributes?.department || null,
       details: {
         mfaVerified: true,
         usedBackupCode: isBackupCode
@@ -425,7 +427,8 @@ exports.verifyMFA = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        attributes: user.attributes
+        attributes: user.attributes || {},
+        patientId: user.patientId || null
       }
     });
   } catch (error) {
@@ -693,8 +696,15 @@ exports.logout = async (req, res) => {
  */
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
-      .populate('assignedPatients', 'patientId firstName lastName');
+    let user;
+    
+    // Populate assignedPatients only for doctors and nurses
+    if (req.user.role === 'doctor' || req.user.role === 'nurse') {
+      user = await User.findById(req.user.id)
+        .populate('assignedPatients', 'patientId firstName lastName');
+    } else {
+      user = await User.findById(req.user.id);
+    }
 
     if (!user) {
       return res.status(404).json({
@@ -705,7 +715,18 @@ exports.getMe = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: user
+      data: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        attributes: user.attributes || {},
+        patientId: user.patientId || null,
+        mfaEnabled: user.mfa?.enabled || false,
+        assignedPatients: user.assignedPatients || []
+      }
     });
   } catch (error) {
     console.error('Get me error:', error);

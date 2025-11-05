@@ -115,8 +115,39 @@ const DoctorDashboard = () => {
   const handleAddPatient = async (e) => {
     e.preventDefault();
     try {
-      await patientAPI.create(patientForm);
-      toast.success('Patient created successfully!');
+      const response = await patientAPI.create(patientForm);
+      
+      // Check if portal account was created
+      if (response.data?.portalAccount) {
+        const { email, temporaryPassword, patientId } = response.data.portalAccount;
+        
+        // Show detailed success message with credentials
+        toast.success(
+          <div>
+            <p className="font-bold mb-2">Patient created successfully!</p>
+            <p className="text-sm mb-1">Portal account created:</p>
+            <div className="bg-white text-gray-900 p-2 rounded mt-2 text-xs font-mono">
+              <p><strong>Patient ID:</strong> {patientId}</p>
+              <p><strong>Email:</strong> {email}</p>
+              <p><strong>Password:</strong> {temporaryPassword}</p>
+            </div>
+            <p className="text-xs mt-2 text-yellow-200">⚠️ Save these credentials! Patient should change password after first login.</p>
+          </div>,
+          { 
+            autoClose: 15000, // Show for 15 seconds
+            closeOnClick: false 
+          }
+        );
+        
+        console.log('[Patient Portal] Credentials created:', {
+          email,
+          temporaryPassword,
+          patientId
+        });
+      } else {
+        toast.success('Patient created successfully!');
+      }
+      
       setShowAddPatient(false);
       setPatientForm({
         firstName: '',

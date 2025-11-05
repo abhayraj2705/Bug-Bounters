@@ -19,7 +19,8 @@ exports.createPatient = async (req, res) => {
       address,
       bloodType,
       allergies,
-      consent
+      consent,
+      createPortalAccount = true // New option to create patient portal account
     } = req.body;
 
     // Generate unique patient ID
@@ -47,10 +48,51 @@ exports.createPatient = async (req, res) => {
       $push: { assignedPatients: patient._id }
     });
 
+    // Automatically create patient portal account if email is provided
+    let portalAccount = null;
+    let tempPassword = null;
+    
+    if (createPortalAccount && email) {
+      try {
+        // Generate a temporary password (patient should change this)
+        tempPassword = `Patient@${Date.now().toString().slice(-6)}`;
+        
+        // Check if user with this email already exists
+        const existingUser = await User.findOne({ email });
+        
+        if (!existingUser) {
+          portalAccount = await User.create({
+            email,
+            password: tempPassword,
+            firstName,
+            lastName,
+            role: 'patient',
+            patientId: patient._id,
+            attributes: {
+              hospitalId: req.user.attributes.hospitalId
+            }
+          });
+
+          console.log(`[Patient Portal] Account created for ${email} with temp password: ${tempPassword}`);
+        } else {
+          console.log(`[Patient Portal] User with email ${email} already exists`);
+        }
+      } catch (portalError) {
+        console.error('[Patient Portal] Error creating portal account:', portalError);
+        // Don't fail the whole request if portal account creation fails
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: 'Patient created successfully',
-      data: patient
+      data: patient,
+      portalAccount: portalAccount ? {
+        email: portalAccount.email,
+        temporaryPassword: tempPassword,
+        patientId: patient.patientId,
+        message: 'Patient can login to the portal using these credentials. Please ask them to change their password immediately.'
+      } : null
     });
   } catch (error) {
     console.error('Create patient error:', error);
@@ -346,6 +388,132 @@ exports.deletePatient = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting patient',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Create patient portal account
+ * @route   POST /api/patients/:id/create-portal-account
+ * @access  Private (Admin, Doctor)
+ */
+exports.createPortalAccount = async (req, res) => {
+  try {
+    const patient = await Patient.findById(req.params.id);
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+
+    if (!patient.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Patient must have an email address to create portal account'
+      });
+    }
+
+    // Check if portal account already exists
+    const existingUser = await User.findOne({ patientId: patient._id });
+    
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal account already exists for this patient',
+        data: {
+          email: existingUser.email,
+          userId: existingUser._id
+        }
+      });
+    }
+
+    // Generate temporary password
+    const tempPassword = `Patient@${Date.now().toString().slice(-6)}`;
+
+    // Create user account
+    const portalAccount = await User.create({
+      email: patient.email,
+      password: tempPassword,
+      firstName: patient.firstName,
+      lastName: patient.lastName,
+      role: 'patient',
+      patientId: patient._id,
+      attributes: {
+        hospitalId: patient.hospitalId
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Patient portal account created successfully',
+      data: {
+        email: portalAccount.email,
+        temporaryPassword: tempPassword,
+        patientId: patient.patientId,
+        instructions: 'Please provide these credentials to the patient and ask them to change their password immediately after first login.'
+      }
+    });
+  } catch (error) {
+    console.error('Create portal account error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating portal account',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Reset patient portal password
+ * @route   POST /api/patients/:id/reset-portal-password
+ * @access  Private (Admin only)
+ */
+exports.resetPortalPassword = async (req, res) => {
+  try {
+    const patient = await Patient.findById(req.params.id);
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+
+    // Find portal account
+    const portalAccount = await User.findOne({ patientId: patient._id });
+    
+    if (!portalAccount) {
+      return res.status(404).json({
+        success: false,
+        message: 'No portal account found for this patient. Please create one first.'
+      });
+    }
+
+    // Generate new temporary password
+    const tempPassword = `Patient@${Date.now().toString().slice(-6)}`;
+
+    // Update password
+    portalAccount.password = tempPassword;
+    await portalAccount.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Patient portal password reset successfully',
+      data: {
+        email: portalAccount.email,
+        temporaryPassword: tempPassword,
+        patientId: patient.patientId,
+        instructions: 'Please provide this new password to the patient.'
+      }
+    });
+  } catch (error) {
+    console.error('Reset portal password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error resetting portal password',
       error: error.message
     });
   }

@@ -10,6 +10,7 @@ const {
   logout,
   getMe
 } = require('../controllers/authController');
+const { changePassword } = require('../controllers/passwordController');
 const { protect } = require('../middleware/auth');
 
 // Public routes
@@ -21,6 +22,7 @@ router.post('/verify-mfa', verifyMFA);
 router.use(protect);
 router.get('/me', getMe);
 router.post('/logout', logout);
+router.put('/change-password', changePassword);
 router.post('/setup-mfa', setupMFA);
 router.post('/enable-mfa', enableMFA);
 router.post('/disable-mfa', disableMFA);

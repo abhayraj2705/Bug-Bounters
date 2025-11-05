@@ -128,6 +128,7 @@ app.use('/api/patients', require('./routes/patients'));
 app.use('/api/ehr', require('./routes/ehr'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));
 app.use('/api/hospitals', require('./routes/hospitals'));
+app.use('/api/patient-portal', require('./routes/patientPortal'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {

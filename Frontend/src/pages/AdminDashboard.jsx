@@ -433,6 +433,7 @@ const AdminDashboard = () => {
                           u.role === 'admin' ? 'bg-red-100 text-red-800' :
                           u.role === 'doctor' ? 'bg-green-100 text-green-800' :
                           u.role === 'nurse' ? 'bg-blue-100 text-blue-800' :
+                          u.role === 'patient' ? 'bg-purple-100 text-purple-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
                           {u.role}
@@ -609,6 +610,7 @@ const AdminDashboard = () => {
                     <option value="staff">Staff</option>
                     <option value="nurse">Nurse</option>
                     <option value="doctor">Doctor</option>
+                    <option value="patient">Patient</option>
                     <option value="admin">Administrator</option>
                   </select>
                 </div>
@@ -767,6 +769,7 @@ const AdminDashboard = () => {
                     <option value="staff">Staff</option>
                     <option value="nurse">Nurse</option>
                     <option value="doctor">Doctor</option>
+                    <option value="patient">Patient</option>
                     <option value="admin">Administrator</option>
                   </select>
                 </div>

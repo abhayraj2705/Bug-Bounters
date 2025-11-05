@@ -51,6 +51,17 @@ const patientSchema = new mongoose.Schema({
   },
   
   // Contact Information (Encrypted)
+  ssn: {
+    type: String,
+    set: (value) => value ? encryptionService.encrypt(value) : value,
+    get: (value) => {
+      try {
+        return value ? encryptionService.decrypt(value) : value;
+      } catch {
+        return value;
+      }
+    }
+  },
   email: {
     type: String,
     set: (value) => value ? encryptionService.encrypt(value) : value,

@@ -1,13 +1,24 @@
 const mongoose = require('mongoose');
+const mongoEncryption = require('./mongoEncryption');
 
 const connectDB = async () => {
   try {
+    // Get MongoDB CSFLE options if available
+    const encryptionOptions = mongoEncryption.getConnectionOptions();
+    
     const conn = await mongoose.connect(process.env.MONGO_URI, {
       serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
       socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+      ...encryptionOptions // Add encryption options if CSFLE is available
     });
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
+    
+    if (encryptionOptions.autoEncryption) {
+      console.log('✓ MongoDB Client-Side Field Level Encryption (CSFLE) enabled');
+    } else {
+      console.log('✓ Using application-level encryption (AES-256-GCM)');
+    }
     
     // Enable strict mode for security
     mongoose.set('strictQuery', true);

@@ -35,9 +35,15 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'doctor', 'nurse', 'staff'],
+    enum: ['admin', 'doctor', 'nurse', 'staff', 'patient'],
     default: 'staff',
     required: true
+  },
+  // Link to Patient record if role is 'patient'
+  patientId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Patient',
+    required: false
   },
   // ABAC Attributes
   attributes: {

@@ -7,7 +7,9 @@ const {
   updatePatient,
   assignProvider,
   updateConsent,
-  deletePatient
+  deletePatient,
+  createPortalAccount,
+  resetPortalPassword
 } = require('../controllers/patientController');
 const { protect, authorize, checkPatientAccess } = require('../middleware/auth');
 const { logAccess, breakGlass, captureBeforeState } = require('../middleware/auditLog');
@@ -76,6 +78,20 @@ router.delete('/:id',
   captureBeforeState(Patient),
   logAccess('DELETE_PATIENT', 'Patient'),
   deletePatient
+);
+
+// Create patient portal account
+router.post('/:id/create-portal-account',
+  authorize('admin', 'doctor'),
+  logAccess('CREATE_USER', 'User'),
+  createPortalAccount
+);
+
+// Reset patient portal password
+router.post('/:id/reset-portal-password',
+  authorize('admin'),
+  logAccess('PASSWORD_CHANGE', 'User'),
+  resetPortalPassword
 );
 
 module.exports = router;

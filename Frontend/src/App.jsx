@@ -9,6 +9,7 @@ import Register from './pages/Register';
 import AdminDashboard from './pages/AdminDashboard';
 import DoctorDashboard from './pages/DoctorDashboard';
 import NurseDashboard from './pages/NurseDashboard';
+import PatientDashboard from './pages/PatientDashboard';
 import AuditLogs from './pages/AuditLogs';
 import MFASetup from './pages/MFASetup';
 import HospitalManagement from './pages/HospitalManagement';
@@ -47,6 +48,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['nurse', 'staff']}>
                   <NurseDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/patient/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['patient']}>
+                  <PatientDashboard />
                 </ProtectedRoute>
               }
             />

@@ -84,18 +84,95 @@ exports.updateUser = async (req, res) => {
       });
     }
 
+    // Track changes for audit log
+    const changes = [];
+    const beforeState = {
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      attributes: user.attributes,
+      accountLocked: user.accountLocked,
+      isActive: user.isActive
+    };
+
     // Update fields
-    if (firstName) user.firstName = firstName;
-    if (lastName) user.lastName = lastName;
-    if (email) user.email = email;
-    if (role) user.role = role;
-    if (attributes) user.attributes = { ...user.attributes, ...attributes };
-    if (typeof accountLocked !== 'undefined') user.accountLocked = accountLocked;
-    if (typeof accountActive !== 'undefined') user.isActive = accountActive;
+    if (firstName && firstName !== user.firstName) {
+      changes.push(`firstName: ${user.firstName} → ${firstName}`);
+      user.firstName = firstName;
+    }
+    if (lastName && lastName !== user.lastName) {
+      changes.push(`lastName: ${user.lastName} → ${lastName}`);
+      user.lastName = lastName;
+    }
+    if (email && email !== user.email) {
+      changes.push(`email: ${user.email} → ${email}`);
+      user.email = email;
+    }
+    if (role && role !== user.role) {
+      changes.push(`role: ${user.role} → ${role}`);
+      user.role = role;
+      
+      // Create separate audit log for role change (critical security event)
+      await AuditLog.createLog({
+        user: req.user.id,
+        userEmail: req.user.email,
+        userRole: req.user.role,
+        action: 'ROLE_CHANGE',
+        resourceType: 'User',
+        resourceId: user._id,
+        timestamp: new Date(),
+        ipAddress: req.ip || req.connection.remoteAddress,
+        userAgent: req.headers['user-agent'],
+        status: 'SUCCESS',
+        details: {
+          targetUser: user.email,
+          beforeRole: beforeState.role,
+          afterRole: role,
+          changedBy: req.user.email
+        },
+        hospitalId: req.user.attributes?.hospitalId,
+        department: req.user.attributes?.department
+      });
+    }
+    if (attributes) {
+      changes.push(`attributes updated`);
+      user.attributes = { ...user.attributes, ...attributes };
+    }
+    if (typeof accountLocked !== 'undefined' && accountLocked !== user.accountLocked) {
+      changes.push(`accountLocked: ${user.accountLocked} → ${accountLocked}`);
+      user.accountLocked = accountLocked;
+    }
+    if (typeof accountActive !== 'undefined' && accountActive !== user.isActive) {
+      changes.push(`isActive: ${user.isActive} → ${accountActive}`);
+      user.isActive = accountActive;
+      
+      // Create separate audit log for account status change
+      await AuditLog.createLog({
+        user: req.user.id,
+        userEmail: req.user.email,
+        userRole: req.user.role,
+        action: accountActive ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+        resourceType: 'User',
+        resourceId: user._id,
+        timestamp: new Date(),
+        ipAddress: req.ip || req.connection.remoteAddress,
+        userAgent: req.headers['user-agent'],
+        status: 'SUCCESS',
+        details: {
+          targetUser: user.email,
+          previousStatus: beforeState.isActive,
+          newStatus: accountActive,
+          changedBy: req.user.email
+        },
+        hospitalId: req.user.attributes?.hospitalId,
+        department: req.user.attributes?.department
+      });
+    }
 
     await user.save();
 
-    // Create audit log
+    // Create audit log for general update
     await AuditLog.createLog({
       user: req.user.id,
       userEmail: req.user.email,
@@ -107,7 +184,11 @@ exports.updateUser = async (req, res) => {
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.headers['user-agent'],
       status: 'SUCCESS',
-      details: `Updated user: ${user.username}`,
+      details: {
+        targetUser: user.username,
+        changes: changes,
+        beforeState: beforeState
+      },
       hospitalId: req.user.attributes?.hospitalId,
       department: req.user.attributes?.department
     });

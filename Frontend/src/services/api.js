@@ -95,6 +95,8 @@ export const patientAPI = {
   delete: (id) => api.delete(`/patients/${id}`),
   assignProvider: (id, data) => api.post(`/patients/${id}/assign`, data),
   updateConsent: (id, consent) => api.put(`/patients/${id}/consent`, { consent }),
+  createPortalAccount: (id) => api.post(`/patients/${id}/create-portal-account`),
+  resetPortalPassword: (id) => api.post(`/patients/${id}/reset-portal-password`),
 };
 
 // EHR APIs
@@ -145,6 +147,14 @@ export const hospitalAPI = {
   syncStats: (id) => api.post(`/hospitals/${id}/sync`),
   testConnection: (id) => api.post(`/hospitals/${id}/test-connection`),
   getNetworkStats: () => api.get('/hospitals/stats/network'),
+};
+
+// Patient Portal APIs
+export const patientPortalAPI = {
+  getMyProfile: () => api.get('/patient-portal/profile'),
+  getMyEHRRecords: () => api.get('/patient-portal/ehr'),
+  getMyEHRRecord: (id) => api.get(`/patient-portal/ehr/${id}`),
+  updateMyContact: (data) => api.put('/patient-portal/contact', data),
 };
 
 export default api;
